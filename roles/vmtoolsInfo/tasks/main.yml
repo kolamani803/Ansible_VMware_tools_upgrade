@@ -1,0 +1,11 @@
+- block:
+     - name: Gather VMware tools info installed in VM
+       community.vmware.vmware_guest_tools_info:
+        hostname: '{{ lookup("env", "VMWARE_HOST") }}'
+        username: '{{ lookup("env", "VMWARE_USER") }}'
+        password: '{{ lookup("env", "VMWARE_PASSWORD") }}'
+        name: "{{ hostname }}"
+        validate_certs: no
+       delegate_to: localhost
+       register: vmtoolsinfo
+

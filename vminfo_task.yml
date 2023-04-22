@@ -1,0 +1,48 @@
+---
+- block:
+   - name: setting fact for hostname
+     set_fact:
+           hostname: "{{item1}}"
+
+   - set_fact:
+       vmip: "{{ipitem}}"
+     when: host_ip_dict[ipitem] == hostname
+     loop: "{{host_ip_dict.keys() | list}}"
+     loop_control:
+        loop_var: ipitem
+   - name: setting fact for datacenter
+     set_fact:
+       datacenter: "{{dc_dict[item1] }}"
+   - set_fact:
+      addOutput: default
+  rescue:
+    - set_fact:
+       availability_status: "unknown"
+      
+    - set_fact:
+       addOutput: "{{item1}} -powered off or Vmtools is not running-Status:{{availability_status}}            "
+       response: failed    
+       vmOSname: unknown
+       vmtools_status: unknown
+      when: vmip not in host_ip_dict.keys()
+ 
+- block: 
+  - name: Vmtools upgrade
+    include_role:
+      name: vmwareTools-upgrade
+    vars:
+      vmhostname: "{{hostname}}"
+      vmipaddress: "{{vmip}}"
+      dc_name: "{{datacenter}}"
+    register: role_output
+
+- debug:
+    msg: "{{role_output}}"
+  
+- set_fact:
+         summary_flist: "{{ summary_flist + [addOutput] }}"
+  when: response == 'failed'
+- set_fact:
+         summary_slist: "{{ summary_slist + [addOutput] }}"
+  when: response == 'success'
+ 

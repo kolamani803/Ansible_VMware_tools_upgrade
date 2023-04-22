@@ -1,0 +1,124 @@
+- name: Playbook to upgrade vm tools
+  hosts: all 
+  connection: local
+  gather_facts: yes
+  become: False
+  vars:
+    server: "{{vmlist}}"        
+    host_ip_dict: {}
+    summary_flist: []
+    summary_slist: []
+    
+  tasks:
+    - block:
+        - name: Gather only registered virtual machines
+          community.vmware.vmware_vm_info:
+            hostname: '{{ lookup("env", "VMWARE_HOST") }}'
+            username: '{{ lookup("env", "VMWARE_USER") }}'
+            password: '{{ lookup("env", "VMWARE_PASSWORD") }}'
+            vm_type: vm
+          delegate_to: localhost
+          register: vm_info
+
+        - set_fact: 
+           host_ip_dict: "{{ host_ip_dict | default({}) | combine({item.ip_address:item.guest_name}) }}"
+          loop: "{{vm_info.virtual_machines}}"
+        #  no_log: true
+        - set_fact:
+           datacenter_dict: "{{ datacenter_dict | default({}) | combine({item.ip_address:item.datacenter}) }}"
+          loop: "{{vm_info.virtual_machines}}"
+        #  no_log: true
+        - set_fact:
+           dc_dict: "{{ dc_dict | default({}) | combine({item.guest_name:item.datacenter}) }}"
+          loop: "{{vm_info.virtual_machines}}"
+        #  no_log: true
+          
+            ###########################################################
+     
+        - block:
+          - include_role: 
+              name: addinghosts
+            vars:
+              item1: "{{item}}"
+            loop: "{{ server.split(',') }}"
+            
+        - block:
+          - include_tasks: "vminfo_task.yml"
+            loop: "{{ groups['WindowsServer'] }}"
+            loop_control: 
+              loop_var: item1  
+            run_once: true
+
+
+        - set_fact:
+            success_list: "{{ summary_slist | join('\n') }}"
+          when: summary_slist is defined
+
+        - set_fact:
+            failure_list: "{{summary_flist | join('\n')}}"
+          when: summary_flist is defined
+          
+    ################################################################################
+        - block:         
+          - name: Success condition
+            vars:
+              colorcode: 'good'
+              slack_api_token: "{{slack_api_token}}"
+              slack_channel: "{{slack_channel}}"
+              changetaskNumber: "{{changetaskNumber}}"
+              list: "{{success_list}}"
+              type: "Successful Servers"
+            include_role:
+              name: slack_notification
+            when: success_list != ''
+          
+          - name: Failure condition
+            vars:
+              colorcode: 'danger'
+              slack_api_token: "{{slack_api_token}}"
+              slack_channel: "{{slack_channel}}"
+              changetaskNumber: "{{changetaskNumber}}"
+              list: "{{failure_list}}"
+              type: "Failed Servers"
+            include_role:
+              name: slack_notification
+            when: failure_list != ''
+            
+            ###########################################################
+        #ServiceNow call-back    
+        - name: When Automation is complete 
+          set_stats:
+              data:
+                responseCode: 3       
+                responseMessage: "Job ID:{{ tower_job_id }}\nTask Number:{{ changetaskNumber }}\nAnsible Job Template:{{tower_job_template_name}}\nAutomation execution details - {{success_list}}"
+                responseoutput: "success"
+                errorMessage: "no error"
+          when: success_list != '' and failure_list == ''
+          run_once: true
+            
+        
+        - name: When there is partial failure
+          set_stats:
+              data:
+                responseCode: 1           
+                responseMessage: "Job ID:{{ tower_job_id }}\nTask Number:{{ changetaskNumber }}\nAnsible Job Template:{{tower_job_template_name}}\nList of successful servers -{{success_list}}"
+                responseoutput: "failed"
+                errorMessage: "List of successful servers -{{success_list}} \n\n\n List of failed servers -{{failure_list}}"
+          when: failure_list != '' and success_list != ''
+          run_once: true
+          
+        - name: When there is failure
+          set_stats:
+              data:
+                responseCode: 1           
+                responseMessage: "Job ID:{{ tower_job_id }}\nTask Number:{{ changetaskNumber }}\nAnsible Job Template:{{tower_job_template_name}}\n"
+                responseoutput: "failed"
+                errorMessage: "List of failed servers -{{failure_list}}"
+          when: failure_list != '' and success_list == ''
+          run_once: true
+      
+        
+
+
+
+

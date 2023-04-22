@@ -1,0 +1,77 @@
+---
+# tasks file for vmwareTools-upgrade
+- block:   
+   - name: vmtools info
+     include_role:
+       name: vmtoolsInfo
+     vars:
+       name: "{{vmhostname}}"
+   - debug:
+             msg: "{{vmhostname}}" 
+             verbosity: 3
+   - debug:
+             msg: "{{vmtoolsinfo}}" 
+             verbosity: 3
+   - set_fact:
+       vmtools_status: "{{vmtoolsinfo.vmtools_info.vm_tools_version_status}}"
+       vmOSname: "{{vmtoolsinfo.vmtools_info.vm_guest_fullname}}"
+       VMname: "{{vmtoolsinfo.vmtools_info.vm_name}}"
+  when: not addOutput is search('powered off')
+
+- block:
+    - name: Upgrade VM Tools
+      vmware_guest_tools_upgrade:
+        hostname: '{{ lookup("env", "VMWARE_HOST") }}'
+        username: '{{ lookup("env", "VMWARE_USER") }}'
+        password: '{{ lookup("env", "VMWARE_PASSWORD") }}'
+        datacenter: '{{ dc_name }}'
+        validate_certs: no
+        name: '{{ vmhostname }}'
+      delegate_to: localhost
+      when: vmtools_status == "guestToolsNeedUpgrade"
+      register: vmtoolupdate_stat
+  when: not addOutput is search('powered off')
+  rescue:
+        - set_fact:
+            addOutput: "{{vmhostname}}- VM tools upgrade failed due to an unexpected error"
+            response: failed
+- name: Check for VM status
+  block:
+    - wait_for:
+        delay: 60
+        timeout: 60
+    - block:
+        - name: vmtools info
+          include_role:
+            name: vmtoolsInfo
+          vars:
+            name: "{{vmhostname}}"
+
+        - set_fact:
+           vmtools_Status: "{{vmtoolsinfo.vmtools_info.vm_tools_version_status}}"
+                
+        - set_fact:
+            availability_status: VMToolsCurrent
+          when: vmtools_Status == 'guestToolsCurrent'
+
+        - set_fact:
+            availability_status: VMToolsnotCurrent
+          when: vmtools_Status != 'guestToolsCurrent'
+  
+  when: not addOutput is search('powered off')
+##################################################################
+- set_fact:
+         addOutput: "{{vmipaddress}}-{{ vmhostname }}-Vmtools upgrade successful-Status:{{availability_status}}}\n"
+         response: success
+  when: vmtoolupdate_stat.changed == true and (not addOutput is search('powered off')) and (availability_status is search('VMToolsCurrent')) and vmtoolupdate_stat.msg is not defined 
+
+- set_fact:
+         addOutput: "{{vmipaddress}}-{{vmhostname }}-VMtools not current after triggering:{{availability_status}}}\n"
+         response: failed
+  when: vmtoolupdate_stat.changed == true and (not addOutput is search('powered off')) and (availability_status is search('VMToolsnotCurrent')) and vmtoolupdate_stat.msg is not defined 
+ 
+- set_fact:
+    addOutput: "{{vmipaddress}}-{{ vmhostname }}-Vmtools version is already the latest-Status: {{availability_status}}\n"
+    response: success
+  when: vmtools_status == "guestToolsCurrent" and (not addOutput is search('powered off')) and vmtoolupdate_stat.changed == false and vmtoolupdate_stat.msg is not defined 
+

@@ -1,0 +1,44 @@
+- block:
+  - name: setting fact for hostname
+    set_fact:
+          hostname: "{{ host_ip_dict[item1] }}"
+  - set_fact:
+      addOutput: default
+      response: default
+  rescue:
+    - set_fact:
+       availability_status: "unknown"
+       
+    - set_fact:
+       addOutput: "{{item1}} -powered off or Vmtools is not running-Status:{{availability_status}}            "
+       response: failed    
+       vmOSname: unknown
+       vmtools_status: unknown
+      when: not host_ip_dict is search('item1')
+- block:   
+  - name: vmtools info
+    include_role:
+      name: vmtoolsInfo
+    vars:
+      name: "{{hostname}}"
+  
+  - set_fact:
+      vmOSname: "{{vmtoolsinfo.vmtools_info.vm_guest_fullname}}"
+  when: not addOutput is search('powered off')
+#########################################################################
+- block:         
+    - name: Add host to group 'Windows Server'
+      add_host:
+        name: '{{ hostname }}'
+        groups: WindowsServer
+      register: Windowsvm
+      delegate_to: localhost
+
+  when: ((vmOSname is search('Windows Server')) or (vmOSname is search('Windows 10'))) and (not addOutput is search('powered off'))
+
+- debug:
+       msg: "{{ groups['WindowsServer'] }}"
+       verbosity: 3  
+- set_fact:
+         summary_flist: "{{ summary_flist + [addOutput] }}"
+  when: response == 'failed'

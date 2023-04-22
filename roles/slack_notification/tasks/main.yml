@@ -1,0 +1,34 @@
+---
+    - name: Notify task status to the slack channel
+     # community.general.slack:
+      slack:
+     #   domain: "{{ slack_domain }}"
+        token: "{{slack_api_token}}"
+        channel: "{{ slackChannel }}"
+        attachments:
+          - text: "Change Task Number: {{ changetaskNumber }}"
+            color: "{{colorcode}}"
+            title: VM Tools Upgrade
+            fields:
+              - title: Job ID
+                value: "<https://tower.linux.ea.com/#/jobs/playbook/{{ tower_job_id }} | {{ tower_job_id }}>"
+                short: True
+              - title: VCenter
+                value: '{{ lookup("env", "VMWARE_HOST") }}'
+                short: True
+              - title: Ansible Job Template
+                value: "{{tower_job_template_name}}"
+                short: True
+              - title: "{{type}}"
+                value: "{{list}}"
+              
+      register: slacknotification
+      run_once: true
+      delegate_to: localhost
+    
+    - debug:
+        var: slacknotification
+        verbosity: 3
+
+  #  - set_fact:
+   #    threadid: "{{ slacknotification['ts'] }}"
